@@ -16,6 +16,17 @@
                                                              "@modelcontextprotocol/server-sequential-thinking"
                                                          ]
                                             },
+                    "github":  {
+                                   "type":  "stdio",
+                                   "command":  "npx",
+                                   "args":  [
+                                                "-y",
+                                                "@github/mcp-server"
+                                            ],
+                                   "env":  {
+                                               "GITHUB_TOKEN":  "${command:github.copilot.chat.ghtoken}"
+                                           }
+                               },
                     "papersflow":  {
                                        "type":  "stdio",
                                        "command":  "python",
