@@ -16,6 +16,14 @@
                                                              "@modelcontextprotocol/server-sequential-thinking"
                                                          ]
                                             },
+                    "languagetool":  {
+                                         "type":  "stdio",
+                                         "command":  "npx",
+                                         "args":  [
+                                                      "-y",
+                                                      "mcp-languagetool"
+                                                  ]
+                                     },
                     "github":  {
                                    "type":  "stdio",
                                    "command":  "npx",

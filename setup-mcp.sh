@@ -133,6 +133,7 @@ if ! $SKIP_INSTALL; then
         "@anthropic/mcp-fetch"
         "@modelcontextprotocol/server-sequential-thinking"
         "@github/mcp-server"
+        "mcp-languagetool"
     )
 
     for pkg in "${npm_servers[@]}"; do
@@ -198,6 +199,11 @@ fi
     printf '      "type": "stdio",\n'
     printf '      "command": "npx",\n'
     printf '      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]\n'
+    printf '    },\n'
+    printf '    "languagetool": {\n'
+    printf '      "type": "stdio",\n'
+    printf '      "command": "npx",\n'
+    printf '      "args": ["-y", "mcp-languagetool"]\n'
     printf '    }'
 
     # GitHub server
@@ -249,7 +255,7 @@ step "Setup complete"
 echo ""
 echo "   Configured MCP servers:"
 
-for name in fetch sequential-thinking; do
+for name in fetch sequential-thinking languagetool; do
     info "  - $name (npx)"
 done
 if $has_github_auth; then info "  - github (npx)"; fi

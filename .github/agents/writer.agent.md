@@ -1,6 +1,6 @@
 ---
 description: "Use when: writing paper sections, drafting LaTeX content, revising text, improving clarity, structuring arguments, writing abstracts, introductions, related work, methodology, results, conclusions"
-tools: [read, edit, search, latex/*, oncite/*]
+tools: [read, edit, search, latex/*, oncite/*, languagetool/*]
 user-invocable: true
 ---
 

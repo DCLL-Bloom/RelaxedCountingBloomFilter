@@ -156,7 +156,8 @@ if (-not $SkipInstall) {
     $npmServers = @(
         '@anthropic/mcp-fetch',
         '@modelcontextprotocol/server-sequential-thinking',
-        '@github/mcp-server'
+        '@github/mcp-server',
+        'mcp-languagetool'
     )
 
     foreach ($pkg in $npmServers) {
@@ -236,6 +237,12 @@ $servers['sequential-thinking'] = [ordered]@{
     type    = 'stdio'
     command = 'npx'
     args    = @('-y', '@modelcontextprotocol/server-sequential-thinking')
+}
+
+$servers['languagetool'] = [ordered]@{
+    type    = 'stdio'
+    command = 'npx'
+    args    = @('-y', 'mcp-languagetool')
 }
 
 # GitHub MCP — uses gh auth token for browser-based OAuth

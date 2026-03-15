@@ -1,6 +1,6 @@
 ---
 description: "Use when: coordinating research tasks, planning paper workflow, delegating to specialist agents, tracking overall progress, managing multi-step research operations"
-tools: [agent, todo, read, search, github/*]
+tools: [agent, todo, read, search, github/*, arxiv/*]
 agents: [writer, reviewer, scholar, coder, visualizer, oracle]
 ---
 
