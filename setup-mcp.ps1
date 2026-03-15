@@ -1,62 +1,62 @@
 <#
 .SYNOPSIS
-    Sets up MCP (Model Context Protocol) servers for the Relaxed Concurrent
-    Counting Bloom Filter research project.
+    Sets up MCP servers for the Relaxed Concurrent Counting Bloom Filter
+    research project.
 
 .DESCRIPTION
     Installs and configures MCP servers used by the Copilot agent system.
     Generates .vscode/mcp.json with the appropriate server configurations.
-
-    Servers installed:
-      - papersflow-mcp    (Semantic Scholar + OpenAlex literature search)
-      - mcp-dblp          (DBLP CS bibliography search)
-      - mcp-simple-arxiv  (arXiv paper search and reading)
-      - OneCite           (BibTeX citation generation)
-      - arxiv-latex-mcp   (arXiv LaTeX source extraction)
-      - latex-mcp-server  (LaTeX compilation and figure management)
-      - github-mcp-server (GitHub repo/PR/issue management)
-      - mcp-fetch         (Web content fetching)
-      - mcp-sequentialthinking (Multi-step reasoning)
+    Uses GitHub CLI browser-based OAuth for GitHub MCP authentication.
 
 .PARAMETER SkipInstall
     Skip package installation, only generate config.
 
-.PARAMETER GithubToken
-    GitHub personal access token for the GitHub MCP server.
-    Can also be set via GITHUB_TOKEN environment variable.
-
 .EXAMPLE
     .\setup-mcp.ps1
-    .\setup-mcp.ps1 -GithubToken "ghp_xxxx"
     .\setup-mcp.ps1 -SkipInstall
 #>
 
 [CmdletBinding()]
 param(
-    [switch]$SkipInstall,
-    [string]$GithubToken
+    [switch]$SkipInstall
 )
 
 Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-function Write-Step { param([string]$Message) Write-Host "`n>> $Message" -ForegroundColor Cyan }
-function Write-OK   { param([string]$Message) Write-Host "   [OK] $Message" -ForegroundColor Green }
-function Write-Skip { param([string]$Message) Write-Host "   [SKIP] $Message" -ForegroundColor Yellow }
-function Write-Err  { param([string]$Message) Write-Host "   [ERR] $Message" -ForegroundColor Red }
+function Write-Step {
+    param([string]$Message)
+    Write-Host ""
+    Write-Host ">> $Message" -ForegroundColor Cyan
+}
 
-function Test-Command {
+function Write-OK {
+    param([string]$Message)
+    Write-Host "   [OK] $Message" -ForegroundColor Green
+}
+
+function Write-Skip {
+    param([string]$Message)
+    Write-Host "   [SKIP] $Message" -ForegroundColor Yellow
+}
+
+function Write-Err {
+    param([string]$Message)
+    Write-Host "   [ERR] $Message" -ForegroundColor Red
+}
+
+function Test-CommandExists {
     param([string]$Name)
-    $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+    return ($null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue))
 }
 
 function Assert-Prerequisite {
     param([string]$Command, [string]$InstallHint)
-    if (-not (Test-Command $Command)) {
+    if (-not (Test-CommandExists $Command)) {
         Write-Err "'$Command' is required but not found."
         Write-Host "   Install: $InstallHint" -ForegroundColor Yellow
         return $false
@@ -68,119 +68,142 @@ function Assert-Prerequisite {
 # Prerequisite checks
 # ---------------------------------------------------------------------------
 
-Write-Step "Checking prerequisites"
+Write-Step 'Checking prerequisites'
 
 $prereqOk = $true
 
-if (-not (Assert-Prerequisite "node" "https://nodejs.org/")) { $prereqOk = $false }
-if (-not (Assert-Prerequisite "npm"  "Comes with Node.js"))  { $prereqOk = $false }
-if (-not (Assert-Prerequisite "npx"  "Comes with Node.js"))  { $prereqOk = $false }
-
-# Python is optional — only needed for some servers
-$hasPython = Test-Command "python"
-$hasPip = Test-Command "pip"
-if (-not $hasPython) {
-    Write-Skip "Python not found — Python-based MCP servers will be skipped."
+if (-not (Assert-Prerequisite 'node' 'https://nodejs.org/')) {
+    $prereqOk = $false
 }
-
-# uvx is optional — preferred runner for some Python servers
-$hasUvx = Test-Command "uvx"
-if (-not $hasUvx -and $hasPython) {
-    Write-Skip "uvx not found — will fall back to pip + python for Python servers."
+if (-not (Assert-Prerequisite 'npm' 'Comes with Node.js')) {
+    $prereqOk = $false
+}
+if (-not (Assert-Prerequisite 'npx' 'Comes with Node.js')) {
+    $prereqOk = $false
 }
 
 if (-not $prereqOk) {
-    Write-Err "Missing required prerequisites. Install them and re-run."
+    Write-Err 'Missing required prerequisites. Install them and re-run.'
     exit 1
 }
 
-$nodeVersion = (node --version) 2>$null
+$nodeVersion = node --version 2>$null
 Write-OK "Node.js $nodeVersion"
+
+# Python is optional
+$hasPython = Test-CommandExists 'python'
+$hasPip = $false
 if ($hasPython) {
-    $pyVersion = (python --version 2>&1) -replace 'Python\s*', ''
+    $hasPip = Test-CommandExists 'pip'
+    $pyVersion = python --version 2>&1
     Write-OK "Python $pyVersion"
-}
-if ($hasUvx) { Write-OK "uvx available" }
-
-# ---------------------------------------------------------------------------
-# Resolve GitHub token
-# ---------------------------------------------------------------------------
-
-if (-not $GithubToken) {
-    $GithubToken = $env:GITHUB_TOKEN
-}
-$hasGithubToken = [bool]$GithubToken
-if (-not $hasGithubToken) {
-    Write-Skip "No GitHub token provided — GitHub MCP server will use empty token."
-    Write-Host "   Set GITHUB_TOKEN env var or pass -GithubToken to enable." -ForegroundColor Yellow
+} else {
+    Write-Skip 'Python not found. Python-based MCP servers will be skipped.'
 }
 
+# uvx is optional — preferred runner for Python servers
+$hasUvx = Test-CommandExists 'uvx'
+if ($hasUvx) {
+    Write-OK 'uvx available'
+} elseif ($hasPython) {
+    Write-Skip 'uvx not found. Will fall back to pip + python for Python servers.'
+}
+
+# gh CLI — required for GitHub MCP browser auth
+$hasGh = Test-CommandExists 'gh'
+
 # ---------------------------------------------------------------------------
-# Install npm-based MCP servers (global installs via npx at runtime — no
-# global pollution; npx caches automatically)
+# GitHub CLI browser authentication
 # ---------------------------------------------------------------------------
 
-# We don't globally install npm packages. The VS Code MCP config uses npx
-# which auto-downloads on first run. We just verify npx works.
+Write-Step 'Configuring GitHub authentication (browser login)'
+
+$hasGithubAuth = $false
+
+if (-not $hasGh) {
+    Write-Skip 'GitHub CLI (gh) not found. GitHub MCP server will be skipped.'
+    Write-Host '   Install: https://cli.github.com/' -ForegroundColor Yellow
+} else {
+    # Check if already authenticated (gh auth status exits 1 if not logged in)
+    $prevPref = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $null = gh auth status 2>&1
+    $ghExitCode = $LASTEXITCODE
+    $ErrorActionPreference = $prevPref
+
+    if ($ghExitCode -eq 0) {
+        Write-OK 'Already authenticated with GitHub CLI'
+        $hasGithubAuth = $true
+    } else {
+        Write-Host '   Launching browser login...' -ForegroundColor Gray
+        gh auth login --web --scopes 'repo,read:org'
+        if ($LASTEXITCODE -eq 0) {
+            Write-OK 'GitHub browser login successful'
+            $hasGithubAuth = $true
+        } else {
+            Write-Err 'GitHub browser login failed. GitHub MCP server will be skipped.'
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Install packages
+# ---------------------------------------------------------------------------
 
 if (-not $SkipInstall) {
-    Write-Step "Pre-caching npm MCP packages (npx -y)"
+    Write-Step 'Pre-caching npm MCP packages'
 
     $npmServers = @(
-        "@anthropic/mcp-fetch"
-        "@modelcontextprotocol/server-sequential-thinking"
-        "@github/mcp-server"
+        '@anthropic/mcp-fetch',
+        '@modelcontextprotocol/server-sequential-thinking',
+        '@github/mcp-server'
     )
 
     foreach ($pkg in $npmServers) {
         Write-Host "   Caching $pkg ..." -NoNewline
+        $prevPref = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         try {
             $null = npm cache add $pkg 2>&1
-            Write-Host " done" -ForegroundColor Green
-        } catch {
-            Write-Host " (will download on first use)" -ForegroundColor Yellow
+            Write-Host ' done' -ForegroundColor Green
+        }
+        catch {
+            Write-Host ' (will download on first use)' -ForegroundColor Yellow
+        }
+        finally {
+            $ErrorActionPreference = $prevPref
         }
     }
 
-    # Python-based servers: install via pip/uvx if available
+    # Python-based servers
     if ($hasPython -and $hasPip) {
-        Write-Step "Installing Python MCP packages"
+        Write-Step 'Installing Python MCP packages'
 
         $pipServers = @(
-            "papersflow-mcp"
-            "mcp-simple-arxiv"
-            "mcp-dblp"
+            'papersflow-mcp',
+            'mcp-simple-arxiv',
+            'mcp-dblp',
+            'oncite',
+            'arxiv-latex-mcp',
+            'latex-mcp-server'
         )
 
         foreach ($pkg in $pipServers) {
             Write-Host "   Installing $pkg ..." -NoNewline
+            $prevPref = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
             try {
                 $output = pip install $pkg 2>&1 | Out-String
-                if ($LASTEXITCODE -ne 0) { throw $output }
-                Write-Host " done" -ForegroundColor Green
-            } catch {
-                Write-Host " failed" -ForegroundColor Red
-                Write-Err "  $($_.Exception.Message)"
+                if ($LASTEXITCODE -ne 0) {
+                    throw $output
+                }
+                Write-Host ' done' -ForegroundColor Green
             }
-        }
-    }
-
-    if ($hasPython -and $hasPip) {
-        # These may need special install methods
-        $specialPip = @(
-            @{ Name = "oncite";         Pkg = "oncite" }
-            @{ Name = "arxiv-latex-mcp"; Pkg = "arxiv-latex-mcp" }
-            @{ Name = "latex-mcp-server"; Pkg = "latex-mcp-server" }
-        )
-
-        foreach ($entry in $specialPip) {
-            Write-Host "   Installing $($entry.Name) ..." -NoNewline
-            try {
-                $output = pip install $entry.Pkg 2>&1 | Out-String
-                if ($LASTEXITCODE -ne 0) { throw $output }
-                Write-Host " done" -ForegroundColor Green
-            } catch {
-                Write-Host " skipped (install manually: pip install $($entry.Pkg))" -ForegroundColor Yellow
+            catch {
+                Write-Host " skipped (install manually: pip install $pkg)" -ForegroundColor Yellow
+            }
+            finally {
+                $ErrorActionPreference = $prevPref
             }
         }
     }
@@ -190,114 +213,83 @@ if (-not $SkipInstall) {
 # Generate .vscode/mcp.json
 # ---------------------------------------------------------------------------
 
-Write-Step "Generating .vscode/mcp.json"
+Write-Step 'Generating .vscode/mcp.json'
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$vscodeDir = Join-Path $projectRoot ".vscode"
+$vscodeDir = Join-Path $projectRoot '.vscode'
 
 if (-not (Test-Path $vscodeDir)) {
     New-Item -ItemType Directory -Path $vscodeDir -Force | Out-Null
 }
 
-# Build server configs conditionally
 $servers = [ordered]@{}
 
 # --- npm / npx-based servers ---
 
-$servers["fetch"] = @{
-    type = "stdio"
-    command = "npx"
-    args = @("-y", "@anthropic/mcp-fetch")
+$servers['fetch'] = [ordered]@{
+    type    = 'stdio'
+    command = 'npx'
+    args    = @('-y', '@anthropic/mcp-fetch')
 }
 
-$servers["sequential-thinking"] = @{
-    type = "stdio"
-    command = "npx"
-    args = @("-y", "@modelcontextprotocol/server-sequential-thinking")
+$servers['sequential-thinking'] = [ordered]@{
+    type    = 'stdio'
+    command = 'npx'
+    args    = @('-y', '@modelcontextprotocol/server-sequential-thinking')
 }
 
-if ($hasGithubToken) {
-    $servers["github"] = @{
-        type = "stdio"
-        command = "npx"
-        args = @("-y", "@github/mcp-server")
-        env = @{
-            GITHUB_TOKEN = "`${GITHUB_TOKEN}"
+# GitHub MCP — uses gh auth token for browser-based OAuth
+if ($hasGithubAuth) {
+    $servers['github'] = [ordered]@{
+        type    = 'stdio'
+        command = 'npx'
+        args    = @('-y', '@github/mcp-server')
+        env     = [ordered]@{
+            GITHUB_TOKEN = '${command:github.copilot.chat.ghtoken}'
         }
     }
 }
 
-# --- Python-based servers (uvx preferred, fallback to python -m) ---
+# --- Python-based servers ---
 
 if ($hasUvx) {
-    $servers["papersflow"] = @{
-        type = "stdio"
-        command = "uvx"
-        args = @("papersflow-mcp")
-    }
-    $servers["arxiv"] = @{
-        type = "stdio"
-        command = "uvx"
-        args = @("mcp-simple-arxiv")
-    }
-    $servers["dblp"] = @{
-        type = "stdio"
-        command = "uvx"
-        args = @("mcp-dblp")
-    }
-    $servers["oncite"] = @{
-        type = "stdio"
-        command = "uvx"
-        args = @("oncite")
-    }
-    $servers["arxiv-latex"] = @{
-        type = "stdio"
-        command = "uvx"
-        args = @("arxiv-latex-mcp")
-    }
-    $servers["latex"] = @{
-        type = "stdio"
-        command = "uvx"
-        args = @("latex-mcp-server")
+    $pyCmd = 'uvx'
+    $pyArgs = @{
+        papersflow   = @('papersflow-mcp')
+        arxiv        = @('mcp-simple-arxiv')
+        dblp         = @('mcp-dblp')
+        oncite       = @('oncite')
+        'arxiv-latex' = @('arxiv-latex-mcp')
+        latex        = @('latex-mcp-server')
     }
 } elseif ($hasPython) {
-    $servers["papersflow"] = @{
-        type = "stdio"
-        command = "python"
-        args = @("-m", "papersflow_mcp")
+    $pyCmd = 'python'
+    $pyArgs = @{
+        papersflow   = @('-m', 'papersflow_mcp')
+        arxiv        = @('-m', 'mcp_simple_arxiv')
+        dblp         = @('-m', 'mcp_dblp')
+        oncite       = @('-m', 'oncite')
+        'arxiv-latex' = @('-m', 'arxiv_latex_mcp')
+        latex        = @('-m', 'latex_mcp_server')
     }
-    $servers["arxiv"] = @{
-        type = "stdio"
-        command = "python"
-        args = @("-m", "mcp_simple_arxiv")
-    }
-    $servers["dblp"] = @{
-        type = "stdio"
-        command = "python"
-        args = @("-m", "mcp_dblp")
-    }
-    $servers["oncite"] = @{
-        type = "stdio"
-        command = "python"
-        args = @("-m", "oncite")
-    }
-    $servers["arxiv-latex"] = @{
-        type = "stdio"
-        command = "python"
-        args = @("-m", "arxiv_latex_mcp")
-    }
-    $servers["latex"] = @{
-        type = "stdio"
-        command = "python"
-        args = @("-m", "latex_mcp_server")
+} else {
+    $pyCmd = $null
+    $pyArgs = @{}
+}
+
+if ($pyCmd) {
+    foreach ($name in @('papersflow', 'arxiv', 'dblp', 'oncite', 'arxiv-latex', 'latex')) {
+        $servers[$name] = [ordered]@{
+            type    = 'stdio'
+            command = $pyCmd
+            args    = $pyArgs[$name]
+        }
     }
 }
 
-$mcpConfig = @{ servers = $servers }
+$mcpConfig = [ordered]@{ servers = $servers }
+$configPath = Join-Path $vscodeDir 'mcp.json'
 
-$configPath = Join-Path $vscodeDir "mcp.json"
-
-# Serialize with proper depth to capture nested objects
 $json = $mcpConfig | ConvertTo-Json -Depth 5
 
 # Write UTF-8 without BOM
@@ -309,20 +301,20 @@ Write-OK "Created $configPath"
 # Summary
 # ---------------------------------------------------------------------------
 
-Write-Step "Setup complete"
-Write-Host ""
-Write-Host "   Configured MCP servers:" -ForegroundColor White
+Write-Step 'Setup complete'
+Write-Host ''
+Write-Host '   Configured MCP servers:' -ForegroundColor White
 
-$servers.Keys | ForEach-Object {
-    $cmd = $servers[$_].command
-    Write-Host "     - $_ ($cmd)" -ForegroundColor Gray
+foreach ($key in $servers.Keys) {
+    $cmd = $servers[$key].command
+    Write-Host "     - $key ($cmd)" -ForegroundColor Gray
 }
 
-Write-Host ""
-Write-Host "   Next steps:" -ForegroundColor White
-Write-Host "     1. Reload VS Code window (Ctrl+Shift+P > 'Reload Window')" -ForegroundColor Gray
-Write-Host "     2. MCP servers start automatically when agents use them" -ForegroundColor Gray
-if (-not $hasGithubToken) {
-    Write-Host "     3. Set GITHUB_TOKEN env var and re-run to enable GitHub MCP" -ForegroundColor Yellow
+Write-Host ''
+Write-Host '   Next steps:' -ForegroundColor White
+Write-Host '     1. Reload VS Code window (Ctrl+Shift+P > Reload Window)' -ForegroundColor Gray
+Write-Host '     2. MCP servers start automatically when agents use them' -ForegroundColor Gray
+if (-not $hasGithubAuth) {
+    Write-Host '     3. Install GitHub CLI (https://cli.github.com/) and re-run for GitHub MCP' -ForegroundColor Yellow
 }
-Write-Host ""
+Write-Host ''

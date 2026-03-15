@@ -1,0 +1,68 @@
+{
+    "servers":  {
+                    "fetch":  {
+                                  "type":  "stdio",
+                                  "command":  "npx",
+                                  "args":  [
+                                               "-y",
+                                               "@anthropic/mcp-fetch"
+                                           ]
+                              },
+                    "sequential-thinking":  {
+                                                "type":  "stdio",
+                                                "command":  "npx",
+                                                "args":  [
+                                                             "-y",
+                                                             "@modelcontextprotocol/server-sequential-thinking"
+                                                         ]
+                                            },
+                    "papersflow":  {
+                                       "type":  "stdio",
+                                       "command":  "python",
+                                       "args":  [
+                                                    "-m",
+                                                    "papersflow_mcp"
+                                                ]
+                                   },
+                    "arxiv":  {
+                                  "type":  "stdio",
+                                  "command":  "python",
+                                  "args":  [
+                                               "-m",
+                                               "mcp_simple_arxiv"
+                                           ]
+                              },
+                    "dblp":  {
+                                 "type":  "stdio",
+                                 "command":  "python",
+                                 "args":  [
+                                              "-m",
+                                              "mcp_dblp"
+                                          ]
+                             },
+                    "oncite":  {
+                                   "type":  "stdio",
+                                   "command":  "python",
+                                   "args":  [
+                                                "-m",
+                                                "oncite"
+                                            ]
+                               },
+                    "arxiv-latex":  {
+                                        "type":  "stdio",
+                                        "command":  "python",
+                                        "args":  [
+                                                     "-m",
+                                                     "arxiv_latex_mcp"
+                                                 ]
+                                    },
+                    "latex":  {
+                                  "type":  "stdio",
+                                  "command":  "python",
+                                  "args":  [
+                                               "-m",
+                                               "latex_mcp_server"
+                                           ]
+                              }
+                }
+}

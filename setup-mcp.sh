@@ -3,14 +3,11 @@
 # setup-mcp.sh — Install and configure MCP servers for the Relaxed Concurrent
 # Counting Bloom Filter research project.
 #
-# Usage:
-#   ./setup-mcp.sh                        # Full install + config
-#   ./setup-mcp.sh --skip-install         # Config only
-#   GITHUB_TOKEN=ghp_xxx ./setup-mcp.sh   # With GitHub token
+# Uses GitHub CLI browser-based OAuth for GitHub MCP authentication.
 #
-# Servers configured:
-#   papersflow-mcp, mcp-dblp, mcp-simple-arxiv, OneCite, arxiv-latex-mcp,
-#   latex-mcp-server, github-mcp-server, mcp-fetch, mcp-sequentialthinking
+# Usage:
+#   ./setup-mcp.sh                  # Full install + config
+#   ./setup-mcp.sh --skip-install   # Config only
 
 set -euo pipefail
 
@@ -40,7 +37,7 @@ for arg in "$@"; do
         --skip-install) SKIP_INSTALL=true ;;
         --help|-h)
             echo "Usage: $0 [--skip-install]"
-            echo "  Set GITHUB_TOKEN env var for GitHub MCP server."
+            echo "  Uses GitHub CLI (gh) for browser-based GitHub authentication."
             exit 0 ;;
         *) err "Unknown argument: $arg"; exit 1 ;;
     esac
@@ -61,9 +58,17 @@ for cmd in node npm npx; do
     fi
 done
 
+if ! $prereq_ok; then
+    err "Missing required prerequisites. Install them and re-run."
+    exit 1
+fi
+
+ok "Node.js $(node --version)"
+
 has_python=false
 has_pip=false
 has_uvx=false
+PYTHON=""
 
 if has_cmd python3; then
     has_python=true
@@ -72,14 +77,15 @@ elif has_cmd python; then
     has_python=true
     PYTHON=python
 else
-    skip "Python not found — Python-based MCP servers will be skipped."
+    skip "Python not found. Python-based MCP servers will be skipped."
 fi
 
 if $has_python; then
+    ok "Python $($PYTHON --version 2>&1 | sed 's/Python //')"
     if $PYTHON -m pip --version &>/dev/null; then
         has_pip=true
     else
-        skip "pip not found — Python MCP servers require manual install."
+        skip "pip not found. Python MCP servers require manual install."
     fi
 fi
 
@@ -87,29 +93,33 @@ if has_cmd uvx; then
     has_uvx=true
     ok "uvx available"
 elif $has_python; then
-    skip "uvx not found — will fall back to pip + python for Python servers."
+    skip "uvx not found. Will fall back to pip + python for Python servers."
 fi
 
-if ! $prereq_ok; then
-    err "Missing required prerequisites. Install them and re-run."
-    exit 1
-fi
-
-ok "Node.js $(node --version)"
-if $has_python; then ok "Python $($PYTHON --version 2>&1 | sed 's/Python //')"; fi
-
 # ---------------------------------------------------------------------------
-# Resolve GitHub token
+# GitHub CLI browser authentication
 # ---------------------------------------------------------------------------
 
-GITHUB_TOKEN="${GITHUB_TOKEN:-}"
-has_github_token=false
-if [[ -n "$GITHUB_TOKEN" ]]; then
-    has_github_token=true
-    ok "GitHub token found"
+step "Configuring GitHub authentication (browser login)"
+
+has_github_auth=false
+
+if ! has_cmd gh; then
+    skip "GitHub CLI (gh) not found. GitHub MCP server will be skipped."
+    info "Install: https://cli.github.com/"
 else
-    skip "No GITHUB_TOKEN set — GitHub MCP server will use empty token."
-    info "Set GITHUB_TOKEN env var to enable."
+    if gh auth status &>/dev/null; then
+        ok "Already authenticated with GitHub CLI"
+        has_github_auth=true
+    else
+        info "Launching browser login..."
+        if gh auth login --web --scopes 'repo,read:org'; then
+            ok "GitHub browser login successful"
+            has_github_auth=true
+        else
+            err "GitHub browser login failed. GitHub MCP server will be skipped."
+        fi
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -169,97 +179,64 @@ mkdir -p "$vscode_dir"
 config_path="$vscode_dir/mcp.json"
 
 # Determine Python server command
+py_runner=""
 if $has_uvx; then
     py_runner="uvx"
-    py_papersflow='["papersflow-mcp"]'
-    py_arxiv='["mcp-simple-arxiv"]'
-    py_dblp='["mcp-dblp"]'
-    py_oncite='["oncite"]'
-    py_arxiv_latex='["arxiv-latex-mcp"]'
-    py_latex='["latex-mcp-server"]'
 elif $has_python; then
     py_runner="$PYTHON"
-    py_papersflow='["-m", "papersflow_mcp"]'
-    py_arxiv='["-m", "mcp_simple_arxiv"]'
-    py_dblp='["-m", "mcp_dblp"]'
-    py_oncite='["-m", "oncite"]'
-    py_arxiv_latex='["-m", "arxiv_latex_mcp"]'
-    py_latex='["-m", "latex_mcp_server"]'
-else
-    py_runner=""
 fi
 
-# Build JSON — using heredoc for reliability over jq dependency
+# Build JSON via heredoc
 {
-    cat <<HEADER
-{
-  "servers": {
-    "fetch": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@anthropic/mcp-fetch"]
-    },
-    "sequential-thinking": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
-    }
-HEADER
+    printf '{\n  "servers": {\n'
+    printf '    "fetch": {\n'
+    printf '      "type": "stdio",\n'
+    printf '      "command": "npx",\n'
+    printf '      "args": ["-y", "@anthropic/mcp-fetch"]\n'
+    printf '    },\n'
+    printf '    "sequential-thinking": {\n'
+    printf '      "type": "stdio",\n'
+    printf '      "command": "npx",\n'
+    printf '      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]\n'
+    printf '    }'
 
-    # GitHub server (conditional)
-    if $has_github_token; then
-        cat <<GITHUB
-    ,
-    "github": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@github/mcp-server"],
-      "env": {
-        "GITHUB_TOKEN": "\${GITHUB_TOKEN}"
-      }
-    }
-GITHUB
+    # GitHub server
+    if $has_github_auth; then
+        printf ',\n'
+        printf '    "github": {\n'
+        printf '      "type": "stdio",\n'
+        printf '      "command": "npx",\n'
+        printf '      "args": ["-y", "@github/mcp-server"],\n'
+        printf '      "env": {\n'
+        printf '        "GITHUB_TOKEN": "${command:github.copilot.chat.ghtoken}"\n'
+        printf '      }\n'
+        printf '    }'
     fi
 
-    # Python servers (conditional)
+    # Python servers
     if [[ -n "$py_runner" ]]; then
-        cat <<PYSERVERS
-    ,
-    "papersflow": {
-      "type": "stdio",
-      "command": "$py_runner",
-      "args": $py_papersflow
-    },
-    "arxiv": {
-      "type": "stdio",
-      "command": "$py_runner",
-      "args": $py_arxiv
-    },
-    "dblp": {
-      "type": "stdio",
-      "command": "$py_runner",
-      "args": $py_dblp
-    },
-    "oncite": {
-      "type": "stdio",
-      "command": "$py_runner",
-      "args": $py_oncite
-    },
-    "arxiv-latex": {
-      "type": "stdio",
-      "command": "$py_runner",
-      "args": $py_arxiv_latex
-    },
-    "latex": {
-      "type": "stdio",
-      "command": "$py_runner",
-      "args": $py_latex
-    }
-PYSERVERS
+        if $has_uvx; then
+            servers=("papersflow:papersflow-mcp" "arxiv:mcp-simple-arxiv" "dblp:mcp-dblp" "oncite:oncite" "arxiv-latex:arxiv-latex-mcp" "latex:latex-mcp-server")
+        else
+            servers=("papersflow:-m:papersflow_mcp" "arxiv:-m:mcp_simple_arxiv" "dblp:-m:mcp_dblp" "oncite:-m:oncite" "arxiv-latex:-m:arxiv_latex_mcp" "latex:-m:latex_mcp_server")
+        fi
+
+        for entry in "${servers[@]}"; do
+            IFS=':' read -r name arg1 arg2 <<< "$entry"
+            printf ',\n'
+            printf '    "%s": {\n' "$name"
+            printf '      "type": "stdio",\n'
+            printf '      "command": "%s",\n' "$py_runner"
+            if [[ -z "$arg2" ]]; then
+                printf '      "args": ["%s"]\n' "$arg1"
+            else
+                printf '      "args": ["%s", "%s"]\n' "$arg1" "$arg2"
+            fi
+            printf '    }'
+        done
     fi
 
-    echo "  }"
-    echo "}"
+    printf '\n  }\n}\n'
 } > "$config_path"
 
 ok "Created $config_path"
@@ -272,11 +249,10 @@ step "Setup complete"
 echo ""
 echo "   Configured MCP servers:"
 
-# List what was configured
 for name in fetch sequential-thinking; do
     info "  - $name (npx)"
 done
-$has_github_token && info "  - github (npx)"
+if $has_github_auth; then info "  - github (npx)"; fi
 if [[ -n "$py_runner" ]]; then
     for name in papersflow arxiv dblp oncite arxiv-latex latex; do
         info "  - $name ($py_runner)"
@@ -285,9 +261,9 @@ fi
 
 echo ""
 echo "   Next steps:"
-info "  1. Reload VS Code window (Cmd+Shift+P / Ctrl+Shift+P > 'Reload Window')"
+info "  1. Reload VS Code window (Cmd+Shift+P / Ctrl+Shift+P > Reload Window)"
 info "  2. MCP servers start automatically when agents use them"
-if ! $has_github_token; then
-    printf "   ${YELLOW}3. Set GITHUB_TOKEN env var and re-run to enable GitHub MCP${NC}\n"
+if ! $has_github_auth; then
+    printf "   ${YELLOW}3. Install GitHub CLI (https://cli.github.com/) and re-run for GitHub MCP${NC}\n"
 fi
 echo ""
