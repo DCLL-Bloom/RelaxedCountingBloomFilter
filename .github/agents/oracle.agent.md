@@ -1,6 +1,6 @@
 ---
 description: "Use when: deep reasoning needed, design tradeoff analysis, theoretical questions, correctness proofs, deciding between approaches, thinking through hard problems, architectural decisions"
-tools: [read, search]
+tools: [read, search, sequential-thinking/*]
 user-invocable: true
 ---
 

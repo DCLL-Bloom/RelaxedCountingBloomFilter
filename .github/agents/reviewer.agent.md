@@ -1,6 +1,6 @@
 ---
 description: "Use when: reviewing paper sections, finding argument gaps, checking logical consistency, assessing novelty, evaluating paper quality, peer review simulation, checking for similar publications, verifying claims"
-tools: [read, search, web]
+tools: [read, search, web, papersflow/*, dblp/*, fetch/*]
 user-invocable: true
 ---
 

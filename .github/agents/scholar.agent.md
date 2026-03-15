@@ -1,6 +1,6 @@
 ---
 description: "Use when: finding citations, searching literature, reading papers, exploring related work, summarizing papers, checking what exists on a topic, finding BibTeX entries, assessing state of the art"
-tools: [read, search, web]
+tools: [read, search, web, papersflow/*, arxiv/*, dblp/*, oncite/*, arxiv-latex/*, fetch/*]
 user-invocable: true
 ---
 
